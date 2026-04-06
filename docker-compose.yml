@@ -62,14 +62,14 @@ services:
           memory: 512M
     networks:
       - mikoshi-net
-  #(Atomic) IAM
-  iam:
+  #(Atomic) Authentication
+  authentication:
     profiles: ["prod"]
     build:
-      context: ./IAM
-    container_name: iam
+      context: ./Authentication
+    container_name: Authentication
     env_file:
-      - ./IAM/.env
+      - ./Authentication/.env
     ports:
       - "6603:6603"
     restart: unless-stopped
@@ -183,7 +183,7 @@ services:
       - SERVER_PORT=8080
       - MGI_INSIGHTS_BASE_URL=http://insights:8080
       - MGI_SUMMARY_CACHE_BASE_URL=http://summary-cache:8080
-      - MGI_QUERYING_LLM_BASE_URL=http://querying-llm:8000
+      - MGI_QUERY_LLM_BASE_URL=http://query-llm:8000
       - MGI_REQUEST_TIMEOUT_MS=${MGI_REQUEST_TIMEOUT_MS:-15000}
       - JAVA_OPTS=-Xmx512m -Xms256m
     depends_on:
@@ -191,7 +191,7 @@ services:
         condition: service_healthy
       summary-cache:
         condition: service_healthy
-      querying-llm:
+      query-llm:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
@@ -207,9 +207,9 @@ services:
     networks:
       - mikoshi-net
   # (Wrapper) LLM
-  querying-llm:
+  query-llm:
     build:
-      context: ./querying-llm
+      context: ./query-llm
       dockerfile: Dockerfile
     profiles: ["prod"]
     ports:
