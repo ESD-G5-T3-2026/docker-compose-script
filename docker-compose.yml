@@ -1,0 +1,267 @@
+volumes:
+  pgdata:
+    name: esd_pgdata
+
+networks:
+  mikoshi-net:
+    driver: bridge
+    name: mikoshi-net
+
+services:
+  #(Atomic) Club
+  club:
+    profiles: ["prod"]
+    build:
+      context: ./club
+    container_name: club
+    env_file:
+      - ./club/.env
+    ports:
+      - "6600:6600"
+    restart: unless-stopped
+    command: python app.py
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  #(Atomic) Personnel
+  personnel:
+    profiles: ["prod"]
+    build:
+      context: ./personnel
+    container_name: personnel
+    env_file:
+      - ./personnel/.env
+    ports:
+      - "6601:6601"
+    restart: unless-stopped
+    command: node app.js
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  #(Atomic) Personnel Assignment
+  personnel-assignment:
+    profiles: ["prod"]
+    build:
+      context: ./personnel-assignment
+    container_name: personnel-assignment
+    env_file:
+      - ./personnel-assignment/.env
+    ports:
+      - "6602:6602"
+    restart: unless-stopped
+    command: node app.js
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  #(Atomic) IAM
+  iam:
+    profiles: ["prod"]
+    build:
+      context: ./IAM
+    container_name: iam
+    env_file:
+      - ./IAM/.env
+    ports:
+      - "6603:6603"
+    restart: unless-stopped
+    command: python app.py
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  #(Atomic) Meeting
+  meeting:
+    profiles: ["prod"]
+    build:
+      context: ./meeting
+    container_name: meeting
+    env_file:
+      - ./meeting/.env
+    ports:
+      - "6604:6604"
+    restart: unless-stopped
+    command: python app.py
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  #(Atomic) Activity Log
+  activity_log:
+    profiles: ["prod"]
+    build:
+      context: ./activity_log
+    container_name: activity-log
+    env_file:
+      - ./activity_log/.env
+    ports:
+      - "6621:6621"
+    restart: unless-stopped
+    command: python app.py
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  #(Atomic) Insights
+  insights:
+    build:
+      context: ./insights
+      dockerfile: Dockerfile
+    profiles: ["dev", "prod"]
+    ports:
+      - "18082:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-test}
+      - SERVER_PORT=8080
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  #(Atomic) Summary Cache
+  summary-cache:
+    build:
+      context: ./summary-cache
+      dockerfile: Dockerfile
+    profiles: ["dev", "prod"]
+    ports:
+      - "18083:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-test}
+      - SERVER_PORT=8080
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+#(Composite) Manage Insights
+  manage-insights-prod:
+    build:
+      context: ./insight-management
+      dockerfile: Dockerfile
+    profiles: ["prod"]
+    ports:
+      - "18080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=${SPRING_PROFILES_ACTIVE:-test}
+      - SERVER_PORT=8080
+      - MGI_INSIGHTS_BASE_URL=http://insights:8080
+      - MGI_SUMMARY_CACHE_BASE_URL=http://summary-cache:8080
+      - MGI_QUERYING_LLM_BASE_URL=http://querying-llm:8000
+      - MGI_REQUEST_TIMEOUT_MS=${MGI_REQUEST_TIMEOUT_MS:-15000}
+      - JAVA_OPTS=-Xmx512m -Xms256m
+    depends_on:
+      insights:
+        condition: service_healthy
+      summary-cache:
+        condition: service_healthy
+      querying-llm:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    networks:
+      - mikoshi-net
+  # (Wrapper) LLM
+  querying-llm:
+    build:
+      context: ./querying-llm
+      dockerfile: Dockerfile
+    profiles: ["prod"]
+    ports:
+      - "18085:8000"
+    environment:
+      - QUERYING_LLM_DEFAULT_PROMPT_ID=${DEFAULT_PROMPT_ID:-summary-v2.1}
+      - QUERYING_LLM_PROMPT_VERSION=${PROMPT_VERSION:-2.1.0}
+      - QUERYING_LLM_TIMEOUT_MS=${QUERYING_LLM_TIMEOUT_MS:-15000}
+      - QUERYING_LLM_PROMPT_BASE_URL=http://prompt:8000
+      - QUERYING_LLM_LLM_BASE_URL=${LLM_BASE_URL:-http://host.docker.internal:18093}
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      prompt:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - mikoshi-net
+  # (Atomic) Prompt
+  prompt:
+    build:
+      context: ./prompt
+      dockerfile: Dockerfile
+    profiles: ["prod"]
+    ports:
+      - "18091:8000"
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL:-}
+      - SUPABASE_KEY=${SUPABASE_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    networks:
+      - mikoshi-net
